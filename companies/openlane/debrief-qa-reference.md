@@ -15,11 +15,11 @@ Took a starter Rails app (Q&A platform with Users, Questions, Answers, Tenants) 
 | 1. Setup | Fixed Ruby version, installed gems, removed deprecated chromedriver, ran migrations, seeded DB, fixed "tenent" → "tenant" typo | Caught starter code bugs before writing any feature code |
 | 1b. Gems | `bundle update` — updated 30+ gems | Stayed within version constraints (security patches, no breaking changes) |
 | 2. Routes & API | `Api::QuestionsController` with index/show, eager loading, JSON serialization | `includes()` prevents N+1 queries |
-| 3. Auth | API key auth via `X-Api-Key` header, `Tenant.authenticate`, `before_action` guard | 401 vs 403 distinction |
+| 3. Auth | API key auth via `X-Api-Key` header, `Tenant.authenticate`, `before_action` guard | 401 for missing or invalid key |
 | 4. Tracking | Added `request_count` column, atomic `increment!` | Single SQL UPDATE avoids race conditions |
 | 5. Dashboard | HTML dashboard with stats and tenant table | MVC pattern, `.count` for efficient SQL |
 | 6. Tests | 41 runs, 60 assertions, 0 failures | Integration tests per Rails 5+ best practice |
-| 7. Extra Credit | Search with LIKE + Rack middleware rate limiting (100/day + 10s throttle) | Middleware rejects before Rails loads; `?` placeholder prevents SQL injection |
+| 7. Extra Credit | Search with LIKE + Rack middleware rate limiting (100/day + 10s throttle) | Middleware rejects before routing/controllers; `?` placeholder prevents SQL injection |
 
 ---
 
@@ -46,7 +46,7 @@ Tests were my ground truth. If the tests passed and I understood *why* they pass
 
 **Answer:**
 
-"Middleware runs earlier in the request pipeline, before Rails routing and controllers even load. That means throttled requests get rejected faster with fewer server resources. I used `Rails.cache` for the counters since middleware doesn't have convenient access to ActiveRecord, and the trade-off of ephemeral data is fine for rate limiting — if the server restarts, counters resetting is acceptable. This is the industry-standard pattern for rate limiting."
+"Middleware runs earlier in the request pipeline, before the request reaches Rails routing and controllers. That means throttled requests get rejected faster with fewer server resources. I used `Rails.cache` for lightweight counters in the middleware; for this challenge the trade-off of ephemeral data is acceptable, though for a real multi-process deployment I'd move to Redis or another shared cache. This is the standard pattern for rate limiting."
 
 ---
 
@@ -73,11 +73,11 @@ Read-modify-write with two concurrent requests:
 
 ---
 
-## Q4: Why 401 for missing key and 403 for invalid key?
+## Q4: Why 401 for both missing and invalid API keys?
 
 **Answer:**
 
-"401 means no credentials were provided — the client didn't even attempt to authenticate. 403 means credentials were provided but they're invalid — access denied. The distinction helps API consumers debug issues: 401 tells them they forgot the header, 403 tells them their key is wrong. If I just returned 401 for both, a developer with a typo in their key would waste time wondering why their header isn't being read."
+"In this implementation I kept auth failure handling simple: if `Tenant.authenticate` returns nil, the controller responds with 401 unauthorized. That covers both a missing header and a bad API key, and it matches the current tests. I wouldn't use 403 here because 403 usually means the client is authenticated but not allowed to access the resource; in these two cases authentication never succeeded in the first place. If a team wanted finer error semantics, it could distinguish the two cases, but this repo intentionally keeps them under the same failure path."
 
 ---
 
@@ -99,7 +99,7 @@ That pattern — learn the convention, then verify it works — is how I moved t
 
 "A few things:
 
-1. **Infrastructure:** I'd swap `Rails.cache` for Redis in the rate limiting middleware. Right now it's in-memory, so counters reset on server restart and wouldn't work across multiple app servers.
+1. **Infrastructure:** I'd swap the current `Rails.cache`-backed throttling for Redis or another shared cache. In this repo the cache store is environment-dependent, so it's fine for a coding challenge but not strong enough for production-grade, multi-process rate limiting.
 
 2. **Scalability:** Add pagination to the questions index endpoint — returning all results doesn't scale.
 
@@ -115,19 +115,19 @@ That pattern — learn the convention, then verify it works — is how I moved t
 
 **Answer (correct order matters):**
 
-"1. **Rack middleware (TenantThrottle) runs first.** Before Rails touches the request, the middleware extracts the API key and checks rate limits against `Rails.cache`. If the tenant is over the limit, it short-circuits with a 429 — Rails never loads.
+"1. **Rack middleware (TenantThrottle) runs first.** Before the request reaches Rails routing and controllers, the middleware extracts the API key and checks rate limits against `Rails.cache`. If that API key is over the limit, it short-circuits with a 429 and the request never reaches the controller.
 
 2. **Rails router** maps `GET /api/questions` to `Api::QuestionsController#index`.
 
-3. **`before_action` runs authentication.** Checks the `X-Api-Key` header, calls `Tenant.authenticate`. No key → 401. Invalid key → 403.
+3. **`before_action` runs authentication.** It reads the `X-Api-Key` header, calls `Tenant.authenticate`, and if authentication succeeds it immediately calls `track_request!`. Missing key or invalid key → 401.
 
-4. **Controller action executes.** Queries shareable questions with `includes()` for eager loading. If a `search` param exists, adds a LIKE filter. Calls `track_request!` which uses `increment!` to atomically bump the request count.
+4. **Controller action executes.** It queries shareable questions with `includes()` for eager loading. If a `search` param exists, it adds a LIKE filter.
 
 5. **JSON response** is built with `as_json` using `only` and `include` to control the output. Response goes back up through the middleware stack to the client."
 
 **Key insight if asked why middleware runs before auth:**
 
-"Why waste time authenticating a request you're going to throttle anyway? A completely fake API key passes through the middleware on its first request — it only gets rejected at the controller layer. Each layer has a single responsibility: middleware handles volume, controllers handle identity."
+"Why waste time authenticating a request you're going to throttle anyway? A completely fake API key can still get its own throttle bucket in middleware on its first request, and then it gets rejected at the controller layer. Each layer has a single responsibility: middleware handles request volume, controllers handle identity."
 
 ---
 
@@ -153,12 +153,12 @@ Auth is defined once, applied everywhere, and public routes stay unaffected."
 
 **Key Concept — N+1 Problem:**
 
-Without `includes()`, 20 questions with users and answers = 1 + 20 + 20 = **41 database queries**.
-With `includes(:user, :answers)` = **3 queries total**. Same data, massively fewer round trips.
+Without `includes()`, Rails lazy-loads associations as serialization touches them, so a list of questions with users, answers, and answer users can balloon into many extra queries.
+With `includes(:user, answers: :user)`, Rails eager-loads that graph up front in a small fixed number of queries. In this code path, that measured at 4 queries total.
 
 **Answer:**
 
-"includes() solves the N+1 query problem. Without it, Rails lazy-loads associations — so if I fetch 20 questions and then serialize each one with its user and answers, that's 41 separate database queries. includes() eager-loads the associations upfront in just 2-3 queries total. For an API endpoint that could get hit frequently, that difference in database load is significant."
+"includes() solves the N+1 query problem. In this endpoint I'm serializing each question with its user, its answers, and each answer's user. Without eager loading, Rails would keep issuing extra queries as that serialization walks the associations. `includes(:user, answers: :user)` pulls that data up front, keeping the query count bounded and predictable. For an API endpoint that could get hit frequently, that difference in database load is significant."
 
 ---
 
