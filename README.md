@@ -5,9 +5,13 @@ Personal interview preparation materials organized by company and general resour
 ## Structure
 
 ```
+├── resumes/
+│   ├── master-resume.md                # Master resume (all experience)
+│   └── platform-engineer-resume.md     # Platform Engineer tailored resume
+│
 ├── general/
 │   ├── interview-pipeline-context.md   # Active pipeline & background overview
-│   └── story-bank.md                   # 8 behavioral stories (STAR format)
+│   └── story-bank.md                   # 5 behavioral stories (condensed, no redundancy)
 │
 ├── companies/
 │   ├── betterment/                     # Sr. SRE — Developer Experience
@@ -39,12 +43,19 @@ Personal interview preparation materials organized by company and general resour
 │       └── ben-daghir-prep.md
 ```
 
+## Resumes
+
+| File | Description |
+|------|-------------|
+| [Master Resume](resumes/master-resume.md) | Complete resume covering all experience — Software & Platform Engineer |
+| [Platform Engineer Resume](resumes/platform-engineer-resume.md) | Tailored for Platform/DevOps Engineer roles — K8s, Terraform, AWS focus |
+
 ## General Resources
 
 | File | Description |
 |------|-------------|
 | [Interview Pipeline Context](general/interview-pipeline-context.md) | Background, active opportunities, and current status across all companies |
-| [Story Bank](general/story-bank.md) | 8 detailed behavioral stories with hooks, STAR narratives, probing Q&A, and question-to-story mapping |
+| [Story Bank](general/story-bank.md) | 5 condensed behavioral stories — no redundancy, each unique and fully fleshed out with probing Q&A and question mapping |
 
 ## Company-Specific Prep
 
