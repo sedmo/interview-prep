@@ -27,9 +27,9 @@ Last Updated: March 11, 2026 | 5 Stories
 
 At the entertainment client (Disney), I was responsible for a real-time staffing and scheduling pipeline. It ingested high-volume events via Kinesis, processed them through Lambda and ECS services, and wrote to an RDS Aurora PostgreSQL cluster that powered operational dashboards used every morning. The system had three interconnected problems that I tackled in sequence — each fix revealed the next layer.
 
-### Phase 1: The Go Rewrite
+### Phase 1: The Concurrency Optimization
 
-The existing Python data migration script ran sequentially — hitting an API or database row-by-row. During peak periods it took 10+ hours, leaving dashboards stale by morning. I instrumented the script with timing logs and confirmed that 85–90% of wall-clock time was spent waiting on network round-trips. CPU was sitting at about 5%. The script was essentially a very expensive sleep loop.
+The existing Go data migration service ran sequentially — hitting an API or database row-by-row. During peak periods it took 10+ hours, leaving dashboards stale by morning. I ran Go's built-in profiler (pprof) and confirmed that 85–90% of wall-clock time was spent waiting on network round-trips. CPU was sitting at about 5%. The service was essentially a very expensive sleep loop.
 
 **The First Attempt (The Failure):** My instinct was to throw goroutines at it. I spun up an unbounded number of workers and let them rip. It was incredibly fast — for about 90 seconds. Then our RDS instance hit max_connections, latency spiked, and the whole thing threw deadlocks. I'd built an accidental load tester.
 
@@ -71,7 +71,7 @@ With the pipeline running fast and properly monitored, the next bottleneck emerg
 
 ### Probing Questions
 
-**Why Go over fixing the Python?** The team was standardizing on Go for new services. It also gave us better memory efficiency — Python loaded entire result sets into memory while Go streamed rows.
+**Why restructure instead of scaling horizontally?** Adding more instances would have multiplied the database connection problem. The bottleneck was I/O wait within a single process, not CPU — so the fix was concurrency within the existing service, not more copies of the same sequential code.
 
 **How did you decide on shard count?** Each Kinesis shard supports 1MB/sec or 1,000 records/sec. I measured peak ingestion, added 30% buffer, and divided. Went from 2 to 5 shards.
 
@@ -290,7 +290,7 @@ Deployment failures dropped 30% after standardizing cluster configuration. Incid
 |---|---|---|
 | Complex technical challenge | Story 1 (Real-Time Pipeline) | Story 3 (COBOL) |
 | Improved system performance | Story 1 (Go rewrite + DB optimization) | Story 2 (ECS cost) |
-| Architectural trade-off | Story 2 (Lambda vs ECS) | Story 1 (Go vs Python) |
+| Architectural trade-off | Story 2 (Lambda vs ECS) | Story 1 (sequential vs concurrent) |
 | Failure / mistake | Story 2 (Lambda incident) | Story 1 (unbounded goroutines) |
 | Compliance / security | Story 4 (Golden Path CDK) | Story 5 (cluster policies) |
 | Ambiguity / unclear reqs | Story 3 (COBOL Translation) | Story 1 (diagnosing lag) |
@@ -309,7 +309,7 @@ Deployment failures dropped 30% after standardizing cluster configuration. Incid
 
 Interviewers often ask follow-ups that steer you between stories. Having natural bridges makes you sound like someone with a coherent engineering philosophy.
 
-- **Story 1 → Story 2:** "You mentioned the Go rewrite hitting connection limits. Did you deal with that at a broader architectural level?" → leads into the Lambda vs ECS pivot.
+- **Story 1 → Story 2:** "You mentioned the concurrency optimization hitting connection limits. Did you deal with that at a broader architectural level?" → leads into the Lambda vs ECS pivot.
 - **Story 2 → Story 1:** "After the ECS migration, what else did you optimize?" → leads into the observability and database work.
 - **Story 1 → Story 5:** "You built observability for the pipeline. How did you think about observability at the platform level?" → leads into Prometheus/Grafana at The Knot.
 - **Story 3 → Story 4:** "You mentioned building trust with the COBOL devs. How do you drive adoption with skeptical engineers more broadly?" → leads into the platform adoption story.
