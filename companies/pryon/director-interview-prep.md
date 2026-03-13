@@ -32,6 +32,20 @@
 
 ---
 
+## The Opener: "Tell Me About Yourself"
+
+Keep it under 90 seconds. Structure: present → past → future.
+
+"I'm a Senior Software and Platform Engineer with about 8 years of experience, most recently at IBM Consulting where I worked on two large engagements — a real-time data pipeline for an entertainment client and a mainframe-to-cloud modernization for a federal agency. Before that I was at The Knot Worldwide, where I owned the Kubernetes platform and CI/CD infrastructure for 10+ engineering teams. The thread across all of it is building platform tooling that makes other engineers faster — whether that's a self-regulating Go pipeline, GitOps-managed clusters, or shared CI/CD libraries. I'm drawn to Pryon because you're doing that same kind of work — platform infrastructure for ML pipelines — at a stage where the engineering decisions really shape the product."
+
+---
+
+## "Why Are You Looking to Leave?" / "Why Pryon?"
+
+"IBM Consulting gave me great exposure to complex systems across industries, but I'm ready to go deeper on a single platform rather than cycling across client engagements. Pryon is compelling because you're building ML infrastructure at a scale where the platform decisions genuinely matter — and the stack aligns with where I've done my best work."
+
+---
+
 ## Stack Alignment — What Hari Will Probe
 
 Hari's job is to validate that your resume maps to their platform needs. Here's what to expect and how to respond.
